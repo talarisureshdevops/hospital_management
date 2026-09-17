@@ -1,4 +1,6 @@
 // server.js — HMS backend single-file implementation (updated)
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -6,32 +8,50 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// --- Config from env ---
+// --- Config from .env ---
 const PORT = process.env.PORT || 3001;
-const DATABASE_URL = process.env.DATABASE_URL;
-const JWT_SECRET = process.env.JWT_SECRET || 'change_this_jwt_secret';
 
-// --- Validate environment ---
-if (!DATABASE_URL) {
-  console.error('ERROR: DATABASE_URL environment variable is not set.');
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('ERROR: JWT_SECRET is not set.');
   process.exit(1);
 }
-// NOTE: JWT_SECRET has a default above; if you want to force explicit env, remove the default and uncomment check.
-// if (!JWT_SECRET) {
-//   console.error('ERROR: JWT_SECRET environment variable is not set.');
-//   process.exit(1);
-// }
 
-// --- Postgres pool (Render requires ssl with rejectUnauthorized:false) ---
+// --- PostgreSQL connection ---
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT) || 5432,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000
 });
+
+// --- Test PostgreSQL connection ---
+pool.connect()
+  .then(client => {
+    console.log('PostgreSQL connected successfully');
+    client.release();
+  })
+  .catch(err => {
+    console.error('PostgreSQL connection failed:', err.message);
+  });
+
+pool.on('error', err => {
+  console.error('Unexpected PostgreSQL error:', err);
+});
+
+const query = (text, params) => {
+  return pool.query(text, params);
+};
 
 // --- Helper functions ---
 const query = (text, params) => pool.query(text, params);
