@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard — HMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <!-- add near top of each page (once) -->
+<script>
+  // at top of dashboard.html
+  (function(){
+    const raw = localStorage.getItem('hms_user');
+    if (!raw) {
+      // not signed in -> show presence of dashboard but route user to login when they click dashboard actions
+      // if you want immediate redirect to login:
+      window.location.href = 'login.html';
+      return;
+    }
+    try {
+      const u = JSON.parse(raw);
+      const role = (u.role||'').toLowerCase();
+      // If they somehow hit dashboard but are doctor/patient/admin, send to their dashboard
+      if (role.includes('doctor')) { window.location.href = 'doctors.html'; return; }
+      if (role.includes('patient')) { window.location.href = 'patients.html'; return; }
+      if (role.includes('admin')) { window.location.href = 'admin.html'; return; }
+    } catch(e){}
+  })();
+</script>
+
+</head>
+<body>
+ <nav class="navbar navbar-expand-lg">
+  <div class="container">
+    <a class="navbar-brand" href="index.html">HMS</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+        <li class="nav-item"><a class="nav-link" href="register.html">Sign up</a></li>
+      </ul>
+
+      <div class="d-flex align-items-center ms-auto" id="navUserPill"></div>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // small script to populate user pill (add after config.js)
+  (function(){
+    const el = document.getElementById('navUserPill');
+    const raw = localStorage.getItem('hms_user');
+    if (!raw) {
+      el.innerHTML = '';
+      return;
+    }
+    try {
+      const u = JSON.parse(raw);
+      el.innerHTML = `
+        <div class="dropdown">
+          <a class="dropdown-toggle d-flex align-items-center text-decoration-none" id="userDrop" data-bs-toggle="dropdown" href="#">
+            <div style="width:36px;height:36px;border-radius:50%;background:#eef2ff;display:inline-flex;align-items:center;justify-content:center;margin-right:.6rem;font-weight:700;">${(u.name||u.email||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>
+            <span style="font-weight:600">${u.name || u.email}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
+            <li><a class="dropdown-item" href="#" id="viewProfileLink">Edit profile</a></li>
+            <li><a class="dropdown-item" href="#" id="signOutLink">Sign out</a></li>
+          </ul>
+        </div>
+      `;
+      document.getElementById('signOutLink').addEventListener('click', (e)=> {
+        e.preventDefault();
+        localStorage.removeItem('hms_token');
+        localStorage.removeItem('hms_user');
+        // redirect to index or login
+        window.location.href = 'index.html';
+      });
+      document.getElementById('viewProfileLink').addEventListener('click', (e) => {
+        e.preventDefault();
+        // route based on role
+        const role = (u.role||'').toLowerCase();
+        if (role.includes('doctor')) window.location.href = 'doctors.html#edit';
+        else if (role.includes('patient')) window.location.href = 'patients.html#edit';
+        else if (role.includes('admin')) window.location.href = 'admin.html#edit';
+        else window.location.href = 'dashboard.html';
+      });
+    } catch(e){ el.innerHTML = ''; }
+  })();
+</script>
+
+  </nav>
+
+  <main class="container mt-4">
+    <div class="row g-4">
+      <div class="col-lg-3 col-md-6">
+        <div class="card stat-card">
+          <div class="small-muted">Total Patients</div>
+          <div class="h3" id="dashPatientsCount">—</div>
+          <div class="text-muted small">Updated live</div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="card stat-card">
+          <div class="small-muted">Total Doctors</div>
+          <div class="h3" id="dashDoctorsCount">—</div>
+          <div class="text-muted small">Active</div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="card stat-card">
+          <div class="small-muted">Appointments</div>
+          <div class="h3" id="dashApptsCount">—</div>
+          <div class="text-muted small">Next 7 days</div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="card stat-card">
+          <div class="small-muted">Pending Bills</div>
+          <div class="h3" id="dashBillsCount">—</div>
+          <div class="text-muted small">Unpaid</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mt-3">
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body">
+            <h5>Upcoming appointments</h5>
+            <div id="dashApptsTable" class="table-responsive mt-3">
+              <!-- populated by JS (app.js fetchPatients / fetchAppointments) -->
+              <table class="table table-sm">
+                <thead><tr><th>Patient</th><th>Doctor</th><th>Date / Time</th><th>Status</th></tr></thead>
+                <tbody id="dashApptsBody"><tr><td colspan="4">Loading...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card p-3">
+          <h6>Quick actions</h6>
+          <div class="d-grid gap-2 mt-2">
+            <a href="appointments.html" class="btn btn-primary btn-sm">Create appointment</a>
+            <a href="patients.html" class="btn btn-outline-primary btn-sm">Add patient</a>
+            <a href="billing.html" class="btn btn-outline-secondary btn-sm">Open billing</a>
+          </div>
+        </div>
+
+        <div class="card mt-3 p-3">
+          <h6>Search</h6>
+          <input id="dashSearch" class="form-control form-control-sm" placeholder="Search patients / doctors" />
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="site-footer"><div class="container">© <span id="yearDash"></span> HMS</div></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    // Use existing app.js helpers if present (fetchPatients / fetchDoctors / fetchAppointments)
+    document.getElementById('yearDash').textContent = new Date().getFullYear();
+
+    // small loader: try to populate counts using API via app.js's api wrapper if available
+    (async function(){
+      try {
+        if (typeof api === 'function') {
+          const users = await api('/users').catch(()=>[]);
+          const doctors = await api('/doctors').catch(()=>[]);
+          const patients = await api('/patients').catch(()=>[]);
+          const appts = await api('/appointments').catch(()=>[]);
+          document.getElementById('dashPatientsCount').textContent = (patients||[]).length;
+          document.getElementById('dashDoctorsCount').textContent = (doctors||[]).length;
+          document.getElementById('dashApptsCount').textContent = (appts||[]).length;
+          document.getElementById('dashBillsCount').textContent = '0';
+          const apptsBody = document.getElementById('dashApptsBody');
+          apptsBody.innerHTML = (appts||[]).slice(0,6).map(a=>`<tr><td>${a.patient_name||a.patient?.name||''}</td><td>${a.doctor_name||a.doctor?.name||''}</td><td>${new Date(a.datetime||a.date||'').toLocaleString()}</td><td>${a.status||''}</td></tr>`).join('') || '<tr><td colspan="4">No appointments</td></tr>';
+        }
+      } catch(e) { console.warn(e); }
+    })();
+  </script>
+</body>
+</html>

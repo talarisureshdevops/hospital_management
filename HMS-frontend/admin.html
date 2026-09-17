@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — HMS</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+  <style>
+    .section-card{border-radius:12px;padding:18px;background:#fff;box-shadow:0 6px 18px rgba(2,6,23,0.04);}
+    .small-muted{color:#6b7280;}
+    .user-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;font-weight:700;}
+    .grid-two {display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  </style>
+
+  <script>
+    window.HMS = window.HMS || {};
+    window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+    window.HMS.authFetch = window.HMS.authFetch || (async function(path, opts = {}){
+      const base = window.HMS.API_BASE.replace(/\/$/,'');
+      const url = path.match(/^https?:\/\//) ? path : (base + '/' + path.replace(/^\/+/,''));
+      const token = localStorage.getItem('hms_token');
+      const headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, Object.assign({}, opts, { headers }));
+      const txt = await res.text().catch(()=>null);
+      let body = null;
+      try { body = txt ? JSON.parse(txt) : null; } catch(e) { body = txt; }
+      if (!res.ok) { const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText); err.status = res.status; err.body = body; throw err; }
+      return body;
+    });
+  </script>
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navA"> <span class="navbar-toggler-icon"></span> </button>
+      <div class="collapse navbar-collapse" id="navA">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+          <li class="nav-item"><a class="nav-link" href="patients.html">Patients</a></li>
+          <li class="nav-item"><a class="nav-link" href="doctors.html">Doctors</a></li>
+        </ul>
+        <div id="navUserPill" class="d-flex align-items-center ms-auto"></div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">Admin Panel</h4>
+        <div class="small-muted">Manage users, doctors, rooms, staff and inventory</div>
+      </div>
+      <div id="adminSigned" class="small-muted"></div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="section-card mb-3">
+          <h6>Admin Profile</h6>
+          <div class="d-flex align-items-center gap-3">
+            <div class="user-avatar" id="adminAvatar">A</div>
+            <div>
+              <div id="adminName" style="font-weight:700"></div>
+              <div class="small-muted" id="adminEmail"></div>
+            </div>
+          </div>
+          <hr/>
+          <div class="mt-2">
+            <button id="adminSignOut" class="btn btn-outline-danger btn-sm">Sign out</button>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h6>Quick Links</h6>
+          <div class="d-grid gap-2">
+            <a href="rooms.html" class="btn btn-outline-primary btn-sm">Rooms</a>
+            <a href="staff.html" class="btn btn-outline-primary btn-sm">Staff</a>
+            <a href="medicines.html" class="btn btn-outline-primary btn-sm">Medicines</a>
+            <a href="patients.html" class="btn btn-outline-secondary btn-sm">Patients</a>
+            <a href="doctors.html" class="btn btn-outline-secondary btn-sm">Doctors</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="section-card mb-3">
+          <h6>System Overview</h6>
+          <div class="grid-two mt-3">
+            <div>
+              <div><strong>Total Patients</strong></div>
+              <div id="statPatients" class="small-muted">—</div>
+            </div>
+            <div>
+              <div><strong>Total Doctors</strong></div>
+              <div id="statDoctors" class="small-muted">—</div>
+            </div>
+            <div>
+              <div><strong>Rooms Occupied</strong></div>
+              <div id="statRooms" class="small-muted">—</div>
+            </div>
+            <div>
+              <div><strong>Medicines Low</strong></div>
+              <div id="statLowMeds" class="small-muted">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card mb-3">
+          <h6>Recent Activity</h6>
+          <div id="recentActivity" class="mt-2 small-muted">Loading...</div>
+        </div>
+
+        <div class="section-card">
+          <h6>Manage: Users / Doctors / Patients</h6>
+          <div class="mb-3">
+            <button id="refreshAll" class="btn btn-outline-secondary btn-sm">Refresh</button>
+          </div>
+
+          <div class="mb-3">
+            <h6>Patients</h6>
+            <div id="adminPatients" class="small-muted">Loading...</div>
+          </div>
+
+          <div class="mb-3">
+            <h6>Doctors</h6>
+            <div id="adminDoctors" class="small-muted">Loading...</div>
+          </div>
+
+          <div class="mb-3">
+            <h6>Medicines (low stock)</h6>
+            <div id="adminLowMeds" class="small-muted">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer"><div class="container">© <span id="yearAdmin"></span> HMS</div></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    document.getElementById('yearAdmin').textContent = new Date().getFullYear();
+    const authFetch = window.HMS.authFetch;
+
+    (function populateNav(){
+      const el = document.getElementById('navUserPill');
+      const raw = localStorage.getItem('hms_user');
+      if(!raw){ el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; return; }
+      try {
+        const u = JSON.parse(raw);
+        el.innerHTML = `<div class="dropdown">
+          <a class="dropdown-toggle d-flex align-items-center text-decoration-none" id="userDrop" data-bs-toggle="dropdown" href="#">
+            <div class="user-avatar me-2">${(u.name||u.email||'A').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>
+            <span style="font-weight:600">${u.name||u.email}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
+            <li><a class="dropdown-item" href="#" id="navEditAdmin">Edit profile</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#" id="navSignOutA">Sign out</a></li>
+          </ul>
+        </div>`;
+        document.getElementById('navSignOutA').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('hms_token'); localStorage.removeItem('hms_user'); window.location.href='index.html'; });
+        document.getElementById('navEditAdmin').addEventListener('click', (e)=>{ e.preventDefault(); alert('Edit admin profile via DB or endpoint'); });
+      } catch(e){ el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; }
+    })();
+
+    document.getElementById('adminSignOut').addEventListener('click', ()=> { localStorage.removeItem('hms_token'); localStorage.removeItem('hms_user'); window.location.href='index.html'; });
+
+    async function loadOverview(){
+      try {
+        const patients = await authFetch('/patients');
+        const doctors = await authFetch('/doctors');
+        const rooms = await authFetch('/rooms').catch(()=>[]);
+        const meds = await authFetch('/medicines').catch(()=>[]);
+        document.getElementById('statPatients').textContent = (patients && patients.length) || 0;
+        document.getElementById('statDoctors').textContent = (doctors && doctors.length) || 0;
+        document.getElementById('statRooms').textContent = (rooms && rooms.filter(r=>r.status==='occupied').length) || 0;
+        const low = (meds || []).filter(m => (m.min_threshold && m.quantity <= m.min_threshold) || (m.quantity && m.quantity < 5));
+        document.getElementById('statLowMeds').textContent = low.length || 0;
+
+        // admin lists
+        document.getElementById('adminPatients').innerHTML = (patients && patients.length) ? patients.slice(0,10).map(p=>`<div class="mb-2"><strong>${escapeHtml(p.name)}</strong> • ${escapeHtml(p.phone||'')}</div>`).join('') : '<div class="small-muted">No patients</div>';
+        document.getElementById('adminDoctors').innerHTML = (doctors && doctors.length) ? doctors.slice(0,10).map(d=>`<div class="mb-2"><strong>${escapeHtml(d.name)}</strong> • ${escapeHtml(d.specialty||'')}</div>`).join('') : '<div class="small-muted">No doctors</div>';
+        document.getElementById('adminLowMeds').innerHTML = (low && low.length) ? low.map(m => `<div class="mb-2">${escapeHtml(m.name)} — ${m.quantity||0}</div>`).join('') : '<div class="small-muted">No low-stock medicines</div>';
+
+        // recent activity : combine recent entries from patient_history & medicine_issues & room_assignments
+        const history = await authFetch('/patient_history').catch(()=>[]);
+        const issues = await authFetch('/medicine_issues').catch(()=>[]);
+        const assigns = await authFetch('/room_assignments').catch(()=>[]);
+        const recent = [].concat(Array.isArray(history)?history:[], Array.isArray(issues)?issues:[], Array.isArray(assigns)?assigns:[]).sort((a,b)=>new Date(b.created_at||b.issued_at||b.admitted_at||0)-new Date(a.created_at||a.issued_at||a.admitted_at||0)).slice(0,10);
+        document.getElementById('recentActivity').innerHTML = recent.length ? recent.map(r => {
+          const t = r.title || r.record_type || (r.medicine_name ? `Medicine issue: ${r.medicine_name}` : (r.room_number ? `Room assignment: ${r.room_number}` : 'Activity'));
+          const time = new Date(r.created_at||r.issued_at||r.admitted_at||0).toLocaleString();
+          return `<div class="mb-2"><strong>${escapeHtml(t)}</strong><div class="small-muted">${time}</div></div>`;
+        }).join('') : '<div class="small-muted">No recent activity</div>';
+
+      } catch(e) {
+        console.error('loadOverview error', e);
+      }
+    }
+
+    document.getElementById('refreshAll').addEventListener('click', loadOverview);
+
+    function escapeHtml(s){ if (s===null || s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // init admin
+    (async function initAdmin(){
+      const raw = localStorage.getItem('hms_user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        document.getElementById('adminName').textContent = u.name || '';
+        document.getElementById('adminEmail').textContent = u.email || '';
+        document.getElementById('adminAvatar').textContent = (u.name||u.email||'A').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
+        document.getElementById('adminSigned').textContent = `Signed in as ${u.name||u.email}`;
+      }
+      await loadOverview();
+    })();
+  </script>
+</body>
+</html>

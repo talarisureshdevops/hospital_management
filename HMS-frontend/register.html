@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Register — Hospital Management System</title>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css" />
+
+  <style>
+    .auth-card { max-width:980px; margin:34px auto; border-radius:12px; overflow:hidden; display:flex; gap:0; }
+    .auth-left { flex:1; padding:40px 32px; background:linear-gradient(180deg,#fff,#fbfdff); }
+    .auth-right { flex:1; padding:28px; background:#f8fafc; display:flex; align-items:center; justify-content:center; }
+    .small-note { font-size:0.8rem; color:#6c757d; }
+  </style>
+  <!-- add near top of each page (once) -->
+<script>
+  // config.js (global)
+  // Production backend URL (use your render backend URL). For local dev replace accordingly.
+  window.HMS = window.HMS || {};
+  // Use absolute backend URL in production:
+  window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+
+  // authFetch will be used by all pages to attach token & handle JSON
+  window.HMS.authFetch = async function(path, opts = {}) {
+    const base = window.HMS.API_BASE.replace(/\/$/,'');
+    const url = path.startsWith('http') ? path : `${base}/${path.replace(/^\/+/,'')}`;
+    const token = localStorage.getItem('hms_token');
+    const defaultHeaders = {'Content-Type':'application/json'};
+    opts.headers = Object.assign(defaultHeaders, opts.headers || {});
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(url, opts);
+    const text = await res.text().catch(()=>null);
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch(e) { body = text; }
+    if (!res.ok) {
+      const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText);
+      err.status = res.status; err.body = body;
+      throw err;
+    }
+    return body;
+  };
+</script>
+
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+      <div class="d-flex gap-2 ms-auto">
+        <a class="btn btn-outline-primary btn-sm" href="login.html">Login</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container">
+    <div class="auth-card card shadow-sm">
+      <!-- LEFT SIDE -->
+      <div class="auth-left">
+        <h3 class="mb-1">Create Patient Account</h3>
+        <p class="text-muted mb-3">Fill in the details to get started with your hospital account.</p>
+
+        <form id="registerForm" novalidate>
+          <div class="mb-3">
+            <label class="form-label small">Full Name</label>
+            <input id="name" type="text" class="form-control" required placeholder="John Doe"/>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small">Email</label>
+            <input id="email" type="email" class="form-control" required placeholder="example@email.com"/>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small">Password</label>
+            <input id="password" type="password" class="form-control" required placeholder="Enter a secure password"/>
+          </div>
+
+          <div class="d-grid mb-3">
+            <button id="registerBtn" class="btn btn-primary" type="submit">Sign Up</button>
+          </div>
+
+          <div id="registerMsg" class="mt-2" aria-live="polite"></div>
+
+          <p class="small-note mt-3 mb-0">
+            Already have an account? <a href="login.html">Login here</a>.<br>
+            For doctor account credentials, please <b>contact admin</b>.
+          </p>
+        </form>
+      </div>
+
+      <!-- RIGHT SIDE -->
+      <div class="auth-right">
+        <div style="max-width:360px;text-align:center">
+          <img alt="Register" src="assets/images/register.png" style="width:100%;height:auto;margin-bottom:12px"/>
+          <h5>Welcome to HMS</h5>
+          <p class="text-muted small">Register as a patient to schedule appointments, view records, and manage billing easily.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <div>© <span id="yearReg"></span> Hospital Management System</div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap + Script -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const API_BASE = "https://hms-backend-yqjj.onrender.com/api";
+
+    document.getElementById('yearReg').textContent = new Date().getFullYear();
+
+    const registerForm = document.getElementById('registerForm');
+    const registerMsg = document.getElementById('registerMsg');
+    const registerBtn = document.getElementById('registerBtn');
+
+    function showMessage(msg, type='info') {
+      registerMsg.innerHTML = '';
+      const el = document.createElement('div');
+      el.className = type === 'error' ? 'alert alert-danger' : 'alert alert-success';
+      el.textContent = msg;
+      registerMsg.appendChild(el);
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const text = await res.text();
+      try { return { ok: res.ok, status: res.status, body: JSON.parse(text) }; }
+      catch(e) { return { ok: res.ok, status: res.status, body: text }; }
+    }
+
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      registerMsg.innerHTML = '';
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Creating account...';
+
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      if (!name || !email || !password) {
+        showMessage('All fields are required', 'error');
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Sign Up';
+        return;
+      }
+
+      try {
+        const response = await postJson(API_BASE + '/auth/register', {
+          name, email, password, role: 'patient'
+        });
+
+        if (!response.ok) {
+          let msg = response.body?.error || response.body?.message || 'Registration failed';
+          showMessage(msg, 'error');
+        } else {
+          showMessage('Account created successfully! Redirecting to login...');
+          setTimeout(() => window.location.href = 'login.html', 1500);
+        }
+      } catch (err) {
+        console.error('Register error', err);
+        showMessage('Network or server error during registration', 'error');
+      }
+
+      registerBtn.disabled = false;
+      registerBtn.textContent = 'Sign Up';
+    });
+  </script>
+</body>
+</html>

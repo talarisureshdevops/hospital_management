@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hospital Management System</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <!-- Shared site styles -->
+  <link rel="stylesheet" href="assets/css/style.css" />
+
+  <style>
+    .hero-illustration { max-width:520px; margin:auto; }
+    /* small responsive tweak */
+    @media (max-width: 992px) {
+      .hero-illustration { display:block; margin-top:1.25rem; max-width:420px; }
+    }
+  </style>
+  <!-- add near top of each page (once) -->
+<script>
+  // config.js (global)
+  // Production backend URL (use your render backend URL). For local dev replace accordingly.
+  window.HMS = window.HMS || {};
+  // Use absolute backend URL in production:
+  window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+
+  // authFetch will be used by all pages to attach token & handle JSON
+  window.HMS.authFetch = async function(path, opts = {}) {
+    const base = window.HMS.API_BASE.replace(/\/$/,'');
+    const url = path.startsWith('http') ? path : `${base}/${path.replace(/^\/+/,'')}`;
+    const token = localStorage.getItem('hms_token');
+    const defaultHeaders = {'Content-Type':'application/json'};
+    opts.headers = Object.assign(defaultHeaders, opts.headers || {});
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(url, opts);
+    const text = await res.text().catch(()=>null);
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch(e) { body = text; }
+    if (!res.ok) {
+      const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText);
+      err.status = res.status; err.body = body;
+      throw err;
+    }
+    return body;
+  };
+</script>
+
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar navbar-expand-lg">
+  <div class="container">
+    <a class="navbar-brand" href="index.html">HMS</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+        <li class="nav-item"><a class="nav-link" href="register.html">Sign up</a></li>
+      </ul>
+
+      <div class="d-flex align-items-center ms-auto" id="navUserPill"></div>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // small script to populate user pill (add after config.js)
+  (function(){
+    const el = document.getElementById('navUserPill');
+    const raw = localStorage.getItem('hms_user');
+    if (!raw) {
+      el.innerHTML = '';
+      return;
+    }
+    try {
+      const u = JSON.parse(raw);
+      el.innerHTML = `
+        <div class="dropdown">
+          <a class="dropdown-toggle d-flex align-items-center text-decoration-none" id="userDrop" data-bs-toggle="dropdown" href="#">
+            <div style="width:36px;height:36px;border-radius:50%;background:#eef2ff;display:inline-flex;align-items:center;justify-content:center;margin-right:.6rem;font-weight:700;">${(u.name||u.email||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>
+            <span style="font-weight:600">${u.name || u.email}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
+            <li><a class="dropdown-item" href="#" id="viewProfileLink">Edit profile</a></li>
+            <li><a class="dropdown-item" href="#" id="signOutLink">Sign out</a></li>
+          </ul>
+        </div>
+      `;
+      document.getElementById('signOutLink').addEventListener('click', (e)=> {
+        e.preventDefault();
+        localStorage.removeItem('hms_token');
+        localStorage.removeItem('hms_user');
+        // redirect to index or login
+        window.location.href = 'index.html';
+      });
+      document.getElementById('viewProfileLink').addEventListener('click', (e) => {
+        e.preventDefault();
+        // route based on role
+        const role = (u.role||'').toLowerCase();
+        if (role.includes('doctor')) window.location.href = 'doctors.html#edit';
+        else if (role.includes('patient')) window.location.href = 'patients.html#edit';
+        else if (role.includes('admin')) window.location.href = 'admin.html#edit';
+        else window.location.href = 'dashboard.html';
+      });
+    } catch(e){ el.innerHTML = ''; }
+  })();
+</script>
+
+  </nav>
+
+  <!-- HERO -->
+  <section class="container hero">
+    <div class="row align-items-center">
+      <div class="col-lg-6">
+        <h1 class="display-5">Hospital Management System — Simple, secure, reliable</h1>
+        <p class="lead text-muted">Manage patients, schedule appointments and handle billing — all from a single modern interface.</p>
+
+        <div class="mt-4 d-flex gap-2">
+          <a href="login.html" class="btn btn-primary btn-lg">Open Dashboard</a>
+          <a href="register.html" class="btn btn-outline-secondary btn-lg">Sign up</a>
+        </div>
+
+        <div class="row g-3 mt-4">
+          <div class="col-6 col-md-4">
+            <div class="card-quiet">
+              <div class="kv">● 120+</div>
+              <div class="text-muted">Appointments / month</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="card-quiet">
+              <div class="kv">● 450</div>
+              <div class="text-muted">Active patients</div>
+            </div>
+          </div>
+          <div class="col-12 col-md-4">
+            <div class="card-quiet">
+              <div class="kv">● 32</div>
+              <div class="text-muted">Doctors & specialists</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6 text-center d-none d-lg-block">
+        <div class="hero-illustration">
+          <!-- responsive picture element: webp (if you provide), jpg fallback, svg fallback -->
+          <picture>
+            <!-- optional modern format (provide .webp if you create it) -->
+            <source srcset="assets/images/hospital-photo.jpg" type="image/jpg">
+            <!-- primary photo (place this in your repo) -->
+            <img
+              alt="Hospital reception and staff"
+              src="assets/images/hospital-photo.jpg"
+              loading="lazy"
+              style="width:100%;height:auto;border-radius:8px;box-shadow:0 12px 30px rgba(2,6,23,0.08);"
+            />
+          </picture>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="container mb-5">
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card p-3">
+          <div class="d-flex align-items-start gap-3">
+            <div class="feature-icon"><i class="bi bi-calendar-check" style="font-size:20px;color:var(--accent)"></i></div>
+            <div>
+              <h5 class="mb-1">Appointments</h5>
+              <p class="text-muted small mb-0">Quickly create and manage appointments with doctors and patients.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card p-3">
+          <div class="d-flex align-items-start gap-3">
+            <div class="feature-icon"><i class="bi bi-people" style="font-size:20px;color:var(--accent)"></i></div>
+            <div>
+              <h5 class="mb-1">Patient Records</h5>
+              <p class="text-muted small mb-0">Maintain patient history, contacts and quick notes safely.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card p-3">
+          <div class="d-flex align-items-start gap-3">
+            <div class="feature-icon"><i class="bi bi-cash-stack" style="font-size:20px;color:var(--accent)"></i></div>
+            <div>
+              <h5 class="mb-1">Billing</h5>
+              <p class="text-muted small mb-0">Create invoices and track payments easily.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <div>© <span id="yearIndex"></span> Hospital Management System — Made with care</div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap + app.js -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>document.getElementById('yearIndex').textContent = new Date().getFullYear();</script>
+</body>
+</html>

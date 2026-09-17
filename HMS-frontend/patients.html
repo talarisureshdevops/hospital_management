@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Patient Dashboard — HMS</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <!-- Shared site styles -->
+  <link rel="stylesheet" href="assets/css/style.css" />
+
+  <style>
+    .user-pill { display:flex; align-items:center; gap:.6rem; }
+    .user-avatar { width:40px; height:40px; border-radius:50%; background:#e9eefb; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); }
+    .section-card { border-radius:12px; box-shadow:0 8px 22px rgba(2,6,23,0.04); padding:18px; background:#fff; }
+    .mini-muted { color:#6b7280; font-size:.9rem; }
+    .form-inline { gap:.5rem; display:flex; flex-wrap:wrap; align-items:center; }
+    .no-data { color:#6b7280; }
+  </style>
+  <!-- add near top of each page (once) -->
+<script>
+  // config.js (global)
+  // Production backend URL (use your render backend URL). For local dev replace accordingly.
+  window.HMS = window.HMS || {};
+  // Use absolute backend URL in production:
+  window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+
+  // authFetch will be used by all pages to attach token & handle JSON
+  window.HMS.authFetch = async function(path, opts = {}) {
+    const base = window.HMS.API_BASE.replace(/\/$/,'');
+    const url = path.startsWith('http') ? path : `${base}/${path.replace(/^\/+/,'')}`;
+    const token = localStorage.getItem('hms_token');
+    const defaultHeaders = {'Content-Type':'application/json'};
+    opts = opts || {};
+    opts.headers = Object.assign({}, defaultHeaders, opts.headers || {});
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (err) {
+      const e = new Error('Network error');
+      e.status = 0; e.body = null;
+      throw e;
+    }
+    const text = await res.text().catch(()=>null);
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch(e) { body = text; }
+    if (!res.ok) {
+      const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText);
+      err.status = res.status; err.body = body;
+      throw err;
+    }
+    return body;
+  };
+</script>
+
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+
+      <div class="collapse navbar-collapse" id="navMenu">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+        </ul>
+      </div>
+
+      <div class="d-flex align-items-center gap-3">
+        <div id="signedInUser" class="user-pill">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h3 class="mb-0">Patient Dashboard</h3>
+        <div class="mini-muted">Manage your appointments, view past visits, and track medicines</div>
+      </div>
+      <div class="d-flex gap-2">
+        <button id="editAccountBtn" class="btn btn-outline-secondary btn-sm">Edit account</button>
+        <button id="logoutBtn" class="btn btn-danger btn-sm">Sign out</button>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- Left column: bookings -->
+      <div class="col-lg-8">
+        <div class="section-card mb-3">
+          <h5>Upcoming Bookings</h5>
+          <div id="upcomingList" class="table-responsive mt-2">
+            <table class="table table-sm">
+              <thead><tr><th>Doctor</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="upcomingBody"><tr><td colspan="4" class="no-data">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card mb-3">
+          <h5>Past Bookings</h5>
+          <div id="pastList" class="table-responsive mt-2">
+            <table class="table table-sm">
+              <thead><tr><th>Doctor</th><th>Date / Time</th><th>Status</th><th>Notes</th></tr></thead>
+              <tbody id="pastBody"><tr><td colspan="4" class="no-data">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h5>Pharmacy / Medicines Received</h5>
+          <div id="pharmacyList" class="mt-2">
+            <div id="pharmacyBody" class="list-group"><div class="no-data">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: new booking + quick info -->
+      <div class="col-lg-4">
+        <div class="section-card mb-3">
+          <h6>Book a new appointment</h6>
+          <form id="newBookingForm" class="mt-2">
+            <div class="mb-2">
+              <label class="form-label small">Choose Doctor</label>
+              <select id="doctorSelect" class="form-select form-select-sm" required><option>Loading doctors...</option></select>
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label small">Date & Time</label>
+              <input id="apptDatetime" type="datetime-local" class="form-control form-control-sm" required/>
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label small">Reason</label>
+              <input id="apptReason" class="form-control form-control-sm" placeholder="Short reason (e.g. fever, checkup)"/>
+            </div>
+
+            <div class="d-grid">
+              <button class="btn btn-primary btn-sm" id="createBookingBtn" type="submit">Book Appointment</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section-card">
+          <h6>Your quick info</h6>
+          <div class="mt-2">
+            <div><span class="mini-muted">Name</span><div id="infoName" class="kv">—</div></div>
+            <div class="mt-2"><span class="mini-muted">Email</span><div id="infoEmail">—</div></div>
+            <div class="mt-2"><span class="mini-muted">Phone</span><div id="infoPhone">—</div></div>
+            <div class="mt-2"><span class="mini-muted">Address</span><div id="infoAddress">—</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Edit account modal -->
+  <div class="modal fade" id="editAccountModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Edit account</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <form id="editAccountForm">
+            <div class="mb-2">
+              <label class="form-label small">Full name</label>
+              <input id="editName" class="form-control" required/>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Email</label>
+              <input id="editEmail" type="email" class="form-control" required/>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Gender</label>
+              <select id="editGender" class="form-select">
+                <option value="">Prefer not to say</option>
+                <option>Male</option>
+                <option>Female</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Address</label>
+              <textarea id="editAddress" rows="2" class="form-control"></textarea>
+            </div>
+            <div id="editMsg" class="mt-2"></div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="saveEditAccountBtn" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  (function(){
+    // CONFIG
+    // Prefer the global HMS API_BASE (set at top of file). Ensure it doesn't end with a slash.
+    const API_BASE = (window.HMS && window.HMS.API_BASE) ? window.HMS.API_BASE.replace(/\/$/,'') : '/api';
+    // Use the global authFetch if available (we defined window.HMS.authFetch above)
+    const authFetch = (window.HMS && window.HMS.authFetch) ? window.HMS.authFetch : async function(path, opts={}) {
+      // fallback minimal fetch if global helper missing
+      const url = (path.startsWith('http') ? path : (API_BASE + '/' + path.replace(/^\/+/,'')));
+      const headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      const token = localStorage.getItem('hms_token');
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, Object.assign({}, opts, { headers }));
+      const text = await res.text().catch(()=>null);
+      const body = (() => { try { return text ? JSON.parse(text) : null } catch(e){ return text } })();
+      if (!res.ok) {
+        const err = new Error(body && body.error ? body.error : (body && body.message ? body.message : res.statusText));
+        err.status = res.status; err.body = body;
+        throw err;
+      }
+      return body;
+    };
+
+    // state
+    let currentUser = null;
+    let doctors = [];
+    let appointments = []; // all appts fetched
+    let medicines = [];
+
+    // DOM
+    const signedInUserEl = document.getElementById('signedInUser');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const editAccountBtn = document.getElementById('editAccountBtn');
+    const editAccountModal = new bootstrap.Modal(document.getElementById('editAccountModal'));
+    const editAccountForm = document.getElementById('editAccountForm');
+
+    // Info elements
+    const infoName = document.getElementById('infoName');
+    const infoEmail = document.getElementById('infoEmail');
+    const infoPhone = document.getElementById('infoPhone');
+    const infoAddress = document.getElementById('infoAddress');
+
+    const upcomingBody = document.getElementById('upcomingBody');
+    const pastBody = document.getElementById('pastBody');
+    const pharmacyBody = document.getElementById('pharmacyBody');
+    const doctorSelect = document.getElementById('doctorSelect');
+
+    // Edit modal fields
+    const editName = document.getElementById('editName');
+    const editEmail = document.getElementById('editEmail');
+    const editGender = document.getElementById('editGender');
+    const editAddress = document.getElementById('editAddress');
+    const editMsg = document.getElementById('editMsg');
+    const saveEditBtn = document.getElementById('saveEditAccountBtn');
+
+    const newBookingForm = document.getElementById('newBookingForm');
+    const createBookingBtn = document.getElementById('createBookingBtn');
+
+    // helper format date
+    function fmtLocal(dt) {
+      if (!dt) return '';
+      const d = new Date(dt);
+      if (isNaN(d)) return dt;
+      return d.toLocaleString();
+    }
+
+    function showUserPill(user) {
+      signedInUserEl.innerHTML = '';
+      const avatar = document.createElement('div'); avatar.className='user-avatar';
+      const initials = ((user.name||user.email||'').split(' ').map(s=>s[0]).slice(0,2).join('') || 'U').toUpperCase();
+      avatar.textContent = initials;
+      const txt = document.createElement('div'); txt.innerHTML = `<div style="font-weight:600">${escapeHtml(user.name||user.email)}</div><div class="mini-muted" style="font-size:.8rem">${escapeHtml(user.role||'patient')}</div>`;
+      signedInUserEl.appendChild(avatar); signedInUserEl.appendChild(txt);
+    }
+
+    function escapeHtml(s) { if (s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // Load initial data
+    async function init() {
+      try {
+        // find user: try /api/auth/me first, else localStorage
+        const token = localStorage.getItem('hms_token');
+        if (!token) return redirectToLogin();
+
+        try {
+          const meResp = await authFetch('/auth/me');
+          currentUser = meResp && meResp.user ? meResp.user : meResp;
+        } catch (err) {
+          // fallback: if localStorage has user, use it
+          try {
+            const usr = JSON.parse(localStorage.getItem('hms_user') || 'null');
+            if (usr) currentUser = usr;
+            else throw err;
+          } catch(e){ console.warn('me fallback failed', e); redirectToLogin(); return; }
+        }
+
+        // show user pill
+        showUserPill(currentUser);
+        // populate quick info
+        infoName.textContent = currentUser.name || '-';
+        infoEmail.textContent = currentUser.email || '-';
+        infoPhone.textContent = currentUser.phone || '-';
+        infoAddress.textContent = currentUser.address || '-';
+
+        // load doctors & appointments & pharmacy concurrently
+        const [docsResp, apptsResp, medsResp] = await Promise.all([
+          authFetch('/doctors').catch(()=>[]),
+          authFetch('/appointments').catch(()=>[]),
+          authFetch('/medicines').catch(()=>[]) // optional endpoint
+        ]);
+
+        doctors = Array.isArray(docsResp) ? docsResp : (docsResp.data || []);
+        appointments = Array.isArray(apptsResp) ? apptsResp : (apptsResp.data || []);
+        medicines = Array.isArray(medsResp) ? medsResp : (medsResp.data || []);
+
+        renderDoctors();
+        renderAppointments();
+        renderPharmacy();
+
+      } catch (err) {
+        console.error('init error', err);
+        // if auth error then redirect
+        if (err && (err.status === 401 || err.status === 403)) redirectToLogin();
+        else {
+          // show fallback messages
+          upcomingBody.innerHTML = `<tr><td colspan="4" class="no-data">Could not load bookings</td></tr>`;
+          pastBody.innerHTML = `<tr><td colspan="4" class="no-data">Could not load bookings</td></tr>`;
+          pharmacyBody.innerHTML = `<div class="no-data">Could not load pharmacy data</div>`;
+        }
+      }
+    }
+
+    function redirectToLogin() {
+      // if no token, go to login page
+      localStorage.removeItem('hms_token'); localStorage.removeItem('hms_user');
+      window.location.href = 'login.html';
+    }
+
+    // render doctors into select
+    function renderDoctors() {
+      doctorSelect.innerHTML = '';
+      if (!doctors || doctors.length === 0) {
+        const opt = document.createElement('option'); opt.textContent = 'No doctors available'; doctorSelect.appendChild(opt); return;
+      }
+      doctors.forEach(d => {
+        const opt = document.createElement('option'); opt.value = d.id; opt.textContent = `${d.name} ${d.specialty ? ' — ' + d.specialty : ''}`;
+        doctorSelect.appendChild(opt);
+      });
+    }
+
+    // render appointments filtered for current patient
+    function renderAppointments() {
+      const pid = currentUser && currentUser.id;
+      const now = Date.now();
+      const myAppts = (appointments || []).filter(a => String(a.patient_id || a.patient?.id || a.patient_id) === String(pid) || String(a.patient?.id) === String(pid) || (a.patient && a.patient.email === currentUser.email));
+      const upcoming = myAppts.filter(a => {
+        const dt = a.appointment_date || a.datetime || a.date || a.scheduled_at;
+        if (!dt) return false;
+        return (new Date(dt)).getTime() >= now && (a.status||'').toLowerCase() !== 'cancelled';
+      }).sort((x,y)=> new Date(x.appointment_date || x.datetime || x.date || x.scheduled_at) - new Date(y.appointment_date || y.datetime || y.date || y.scheduled_at));
+      const past = myAppts.filter(a => {
+        const dt = a.appointment_date || a.datetime || a.date || a.scheduled_at;
+        if (!dt) return false;
+        return (new Date(dt)).getTime() < now || (a.status||'').toLowerCase() === 'completed';
+      }).sort((x,y)=> new Date(y.appointment_date || y.datetime || y.date || y.scheduled_at) - new Date(x.appointment_date || x.datetime || x.date || x.scheduled_at));
+
+      if (!upcoming.length) upcomingBody.innerHTML = `<tr><td colspan="4" class="no-data">No upcoming bookings</td></tr>`;
+      else upcomingBody.innerHTML = upcoming.map(a => {
+        const doc = a.doctor_name || a.doctor?.name || (doctors.find(d=>String(d.id)===String(a.doctor_id))?.name) || '—';
+        return `<tr>
+          <td>${escapeHtml(doc)}</td>
+          <td>${fmtLocal(a.appointment_date || a.datetime || a.date || a.scheduled_at)}</td>
+          <td>${escapeHtml(a.status || 'scheduled')}</td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-sm btn-outline-secondary" data-action="view" data-id="${a.id}">View</button>
+              <button class="btn btn-sm btn-outline-danger" data-action="cancel" data-id="${a.id}">Cancel</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      if (!past.length) pastBody.innerHTML = `<tr><td colspan="4" class="no-data">No past bookings</td></tr>`;
+      else pastBody.innerHTML = past.map(a => {
+        const doc = a.doctor_name || a.doctor?.name || (doctors.find(d=>String(d.id)===String(a.doctor_id))?.name) || '—';
+        return `<tr>
+          <td>${escapeHtml(doc)}</td>
+          <td>${fmtLocal(a.appointment_date || a.datetime || a.date || a.scheduled_at)}</td>
+          <td>${escapeHtml(a.status || '')}</td>
+          <td>${escapeHtml(a.notes || '')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // render pharmacy (medicines list or orders)
+    function renderPharmacy() {
+      // if there is a medicines list available, show it
+      if (medicines && medicines.length) {
+        pharmacyBody.innerHTML = medicines.map(m => {
+          return `<div class="list-group-item"><div class="d-flex justify-content-between"><div><strong>${escapeHtml(m.name || m.title || 'Medicine')}</strong><div class="mini-muted">${escapeHtml(m.description || m.desc || '')}</div></div><div class="text-end"><div>${escapeHtml(m.status || 'available')}</div></div></div>`;
+        }).join('');
+        return;
+      }
+
+      // If there is no /medicines data, try fetching medicine_issues (pharmacy orders) for this patient
+      authFetch('/medicine_issues').then(orders => {
+        const pid = currentUser && currentUser.id;
+        const arr = Array.isArray(orders) ? orders : (orders && orders.data ? orders.data : []);
+        const myOrders = arr.filter(o => String(o.patient_id) === String(pid) || (o.patient && o.patient.email === currentUser.email) || (o.patient_name && o.patient_name === currentUser.name));
+        if (!myOrders.length) pharmacyBody.innerHTML = '<div class="no-data">No pharmacy records</div>';
+        else {
+          pharmacyBody.innerHTML = myOrders.map(o => `<div class="list-group-item"><div class="d-flex justify-content-between"><div><strong>${escapeHtml(o.medicine_name || o.items || 'Medicine')}</strong><div class="mini-muted">${escapeHtml(o.instructions || o.note || '')}</div></div><div class="text-end"><div>${escapeHtml(o.status || '')}</div><small class="mini-muted">${fmtLocal(o.issued_at || o.created_at)}</small></div></div></div>`).join('');
+        }
+      }).catch(()=> {
+        pharmacyBody.innerHTML = '<div class="no-data">No pharmacy data available</div>';
+      });
+    }
+
+    // create a new booking
+    newBookingForm.addEventListener('submit', async function(e){
+      e.preventDefault();
+      createBookingBtn.disabled = true;
+      createBookingBtn.textContent = 'Booking...';
+
+      const doctorId = doctorSelect.value;
+      const datetime = document.getElementById('apptDatetime').value;
+      const reason = document.getElementById('apptReason').value;
+
+      if (!doctorId || !datetime) {
+        alert('Please choose a doctor and date/time');
+        createBookingBtn.disabled = false;
+        createBookingBtn.textContent = 'Book Appointment';
+        return;
+      }
+
+      try {
+        // send appointment_date where possible; backend accepts different shapes - include both to be safe
+        const iso = new Date(datetime).toISOString();
+        const payload = {
+          patient_id: currentUser.id,
+          doctor_id: doctorId,
+          appointment_date: iso,
+          datetime: iso,
+          status: 'scheduled',
+          notes: reason || null
+        };
+        const res = await authFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });
+        // optimistic refresh: refetch appointments if server doesn't return the new object
+        if (res && res.id) {
+          appointments.unshift(res);
+        } else {
+          // attempt re-fetch
+          try { const fresh = await authFetch('/appointments'); appointments = Array.isArray(fresh) ? fresh : (fresh.data||[]); } catch(e){ /* ignore */ }
+        }
+        renderAppointments();
+        alert('Appointment booked');
+        newBookingForm.reset();
+      } catch (err) {
+        console.error('booking error', err);
+        alert('Booking failed: ' + (err.message || (err.body && err.body.error) || 'Server error'));
+      } finally {
+        createBookingBtn.disabled = false;
+        createBookingBtn.textContent = 'Book Appointment';
+      }
+    });
+
+    // cancel appointment (set status cancelled)
+    document.body.addEventListener('click', async function(ev){
+      const btn = ev.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'cancel') {
+        if (!confirm('Cancel this appointment?')) return;
+        try {
+          await authFetch('/appointments/' + id, { method: 'PUT', body: JSON.stringify({ status: 'cancelled' }) });
+          // update local state
+          const ap = appointments.find(a => String(a.id) === String(id));
+          if (ap) ap.status = 'cancelled';
+          renderAppointments();
+          alert('Appointment cancelled');
+        } catch (err) {
+          console.error('cancel err', err);
+          alert('Could not cancel: ' + (err.message || 'server error'));
+        }
+      } else if (action === 'view') {
+        // show basic info
+        const ap = appointments.find(a => String(a.id) === String(id));
+        if (!ap) return alert('Not found');
+        alert('Appointment details:\nDoctor: ' + (ap.doctor_name || ap.doctor?.name || '—') + '\nDate: ' + fmtLocal(ap.appointment_date || ap.datetime || ap.date || ap.scheduled_at) + '\nStatus: ' + (ap.status||''));
+      }
+    });
+
+    // LOGOUT
+    logoutBtn.addEventListener('click', function(){
+      localStorage.removeItem('hms_token');
+      localStorage.removeItem('hms_user');
+      // go to index or login page
+      window.location.href = 'index.html';
+    });
+
+    // EDIT account
+    editAccountBtn.addEventListener('click', function(){
+      if (!currentUser) return;
+      editName.value = currentUser.name || '';
+      editEmail.value = currentUser.email || '';
+      editGender.value = currentUser.gender || '';
+      editAddress.value = currentUser.address || '';
+      editMsg.innerHTML = '';
+      editAccountModal.show();
+    });
+
+    saveEditBtn.addEventListener('click', async function(){
+      saveEditBtn.disabled = true;
+      saveEditBtn.textContent = 'Saving...';
+      const payload = {
+        name: editName.value.trim(),
+        email: editEmail.value.trim(),
+        gender: editGender.value || null,
+        address: editAddress.value.trim() || null
+      };
+      try {
+        const resp = await authFetch('/users/' + currentUser.id, { method: 'PUT', body: JSON.stringify(payload) });
+        // update local user info
+        currentUser = Object.assign({}, currentUser, resp || {});
+        localStorage.setItem('hms_user', JSON.stringify(currentUser));
+        showUserPill(currentUser);
+        infoName.textContent = currentUser.name || '-';
+        infoEmail.textContent = currentUser.email || '-';
+        infoAddress.textContent = currentUser.address || '-';
+        editMsg.innerHTML = '<div class="alert alert-success small">Saved successfully</div>';
+        setTimeout(()=> editAccountModal.hide(), 900);
+      } catch (err) {
+        console.error('save account err', err);
+        editMsg.innerHTML = '<div class="alert alert-danger small">Save failed: ' + (err.message||'server error') + '</div>';
+      } finally {
+        saveEditBtn.disabled = false;
+        saveEditBtn.textContent = 'Save';
+      }
+    });
+
+    // small utility to fetch appointments & doctors again (useful after external changes)
+    async function refetchAppointments() {
+      try {
+        const apptsResp = await authFetch('/appointments');
+        appointments = Array.isArray(apptsResp) ? apptsResp : (apptsResp.data || []);
+        renderAppointments();
+      } catch (e) { console.warn('refetch appts', e); }
+    }
+
+    // init on page load
+    init();
+
+  })();
+  </script>
+</body>
+</html>

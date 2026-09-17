@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rooms — HMS</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css" />
+
+  <style>
+    .section-card{border-radius:12px;padding:18px;background:#fff;box-shadow:0 6px 18px rgba(2,6,23,0.04);}
+    .user-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;font-weight:700;}
+    .small-muted{color:#6b7280;}
+    .table-sm td,.table-sm th{vertical-align:middle;}
+  </style>
+
+  <!-- Global config + authFetch -->
+  <script>
+    window.HMS = window.HMS || {};
+    // Set your backend base URL here if different:
+    window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+    window.HMS.authFetch = window.HMS.authFetch || (async function(path, opts = {}){
+      const base = window.HMS.API_BASE.replace(/\/$/,'');
+      const url = path.match(/^https?:\/\//) ? path : (base + '/' + path.replace(/^\/+/,''));
+      const token = localStorage.getItem('hms_token');
+      const headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, Object.assign({}, opts, { headers }));
+      const txt = await res.text().catch(()=>null);
+      let body = null;
+      try { body = txt ? JSON.parse(txt) : null; } catch(e) { body = txt; }
+      if (!res.ok) { const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText); err.status = res.status; err.body = body; throw err; }
+      return body;
+    });
+  </script>
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+          <li class="nav-item"><a class="nav-link" href="register.html">Sign up</a></li>
+          <li class="nav-item"><a class="nav-link" href="patients.html">Patients</a></li>
+          <li class="nav-item"><a class="nav-link" href="doctors.html">Doctors</a></li>
+          <li class="nav-item"><a class="nav-link" href="admin.html">Admin</a></li>
+        </ul>
+        <div id="navUserPill" class="d-flex align-items-center ms-auto"></div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">Room Management</h4>
+        <div class="small-muted">Create rooms, assign patients, view occupancy</div>
+      </div>
+      <div><button id="refreshBtn" class="btn btn-outline-secondary btn-sm">Refresh</button></div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <div class="section-card">
+          <h6>Rooms</h6>
+          <div class="table-responsive mt-3">
+            <table class="table table-sm" id="roomsTable">
+              <thead><tr><th>Room#</th><th>Ward</th><th>Type</th><th>Status</th><th>Patient</th><th>Actions</th></tr></thead>
+              <tbody><tr><td colspan="6" class="small-muted">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card mt-3">
+          <h6>Room Assignments (recent)</h6>
+          <div id="assignmentsList" class="mt-2 small-muted">Loading...</div>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="section-card">
+          <h6>Create Room</h6>
+          <form id="createRoomForm" class="mt-2">
+            <div class="mb-2"><label class="form-label small">Room number</label><input id="roomNumber" class="form-control form-control-sm" required /></div>
+            <div class="mb-2"><label class="form-label small">Ward</label><input id="roomWard" class="form-control form-control-sm" /></div>
+            <div class="mb-2"><label class="form-label small">Bed / label</label><input id="bedLabel" class="form-control form-control-sm" /></div>
+            <div class="mb-2"><label class="form-label small">Type</label>
+              <select id="roomType" class="form-select form-select-sm">
+                <option value="general">General</option>
+                <option value="private">Private</option>
+                <option value="icu">ICU</option>
+              </select>
+            </div>
+            <div class="d-grid"><button class="btn btn-primary btn-sm" id="createRoomBtn">Create Room</button></div>
+          </form>
+        </div>
+
+        <div class="section-card mt-3">
+          <h6>Assign Patient to Room</h6>
+          <form id="assignForm" class="mt-2">
+            <div class="mb-2"><label class="form-label small">Select Room</label><select id="assignRoomSelect" class="form-select form-select-sm"><option>Loading...</option></select></div>
+            <div class="mb-2"><label class="form-label small">Select Patient</label><select id="assignPatientSelect" class="form-select form-select-sm"><option>Loading patients...</option></select></div>
+            <div class="mb-2"><label class="form-label small">Reason</label><input id="assignReason" class="form-control form-control-sm"/></div>
+            <div class="d-grid"><button id="assignBtn" class="btn btn-success btn-sm">Assign</button></div>
+          </form>
+          <div class="mt-2 small-muted">Vacate rooms using the Vacate action in the table.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer"><div class="container">© <span id="yearRooms"></span> HMS</div></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    document.getElementById('yearRooms').textContent = new Date().getFullYear();
+    const authFetch = window.HMS.authFetch;
+
+    // populate nav user
+    (function populateNavUser(){
+      const el = document.getElementById('navUserPill');
+      const raw = localStorage.getItem('hms_user');
+      if (!raw) { el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; return; }
+      try {
+        const u = JSON.parse(raw);
+        el.innerHTML = `
+          <div class="dropdown">
+            <a class="dropdown-toggle d-flex align-items-center text-decoration-none" id="userDrop" data-bs-toggle="dropdown" href="#">
+              <div class="user-avatar me-2">${(u.name||u.email||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>
+              <span style="font-weight:600">${u.name||u.email}</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
+              <li><a class="dropdown-item" href="#" id="viewProfileLink">Edit profile</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="#" id="signOutLink">Sign out</a></li>
+            </ul>
+          </div>`;
+        document.getElementById('signOutLink').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('hms_token'); localStorage.removeItem('hms_user'); window.location.href='index.html'; });
+        document.getElementById('viewProfileLink').addEventListener('click', (e)=>{ e.preventDefault(); const u2 = JSON.parse(raw); const role = (u2.role||'').toLowerCase(); if(role.includes('doctor')) window.location.href='doctors.html#edit'; else if(role.includes('patient')) window.location.href='patients.html#edit'; else window.location.href='admin.html#edit'; });
+      } catch(e){ el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; }
+    })();
+
+    // Elements
+    const roomsTableBody = document.getElementById('roomsTable').querySelector('tbody');
+    const assignmentsList = document.getElementById('assignmentsList');
+    const assignRoomSelect = document.getElementById('assignRoomSelect');
+    const assignPatientSelect = document.getElementById('assignPatientSelect');
+
+    async function loadRooms(){
+      roomsTableBody.innerHTML = '<tr><td colspan="6" class="small-muted">Loading...</td></tr>';
+      try {
+        const rooms = await authFetch('/rooms');
+        if (!rooms || rooms.length === 0) { roomsTableBody.innerHTML = '<tr><td colspan="6" class="small-muted">No rooms yet</td></tr>'; assignRoomSelect.innerHTML = '<option>No rooms</option>'; return; }
+        assignRoomSelect.innerHTML = '';
+        roomsTableBody.innerHTML = rooms.map(r => {
+          const patient = r.current_patient_id ? (r.current_patient_name || r.current_patient || `#${r.current_patient_id}`) : '-';
+          const actions = (r.status === 'occupied') ? `<button class="btn btn-sm btn-outline-danger vacateBtn" data-id="${r.id}">Vacate</button>` : `<button class="btn btn-sm btn-outline-success assignQuickBtn" data-id="${r.id}">Assign</button>`;
+          return `<tr>
+            <td>${escapeHtml(r.room_number)}</td>
+            <td>${escapeHtml(r.ward||'')}</td>
+            <td>${escapeHtml(r.room_type||'')}</td>
+            <td>${escapeHtml(r.status||'')}</td>
+            <td>${escapeHtml(patient)}</td>
+            <td>${actions}</td>
+          </tr>`;
+        }).join('');
+        rooms.forEach(r => {
+          const opt = document.createElement('option'); opt.value = r.id; opt.textContent = `${r.room_number} (${r.ward||''}) - ${r.status}`; assignRoomSelect.appendChild(opt);
+        });
+      } catch (err) {
+        roomsTableBody.innerHTML = '<tr><td colspan="6" class="small-muted">Failed to load rooms</td></tr>';
+        console.error(err);
+      }
+    }
+
+    async function loadAssignments(){
+      assignmentsList.innerHTML = 'Loading...';
+      try {
+        const assigns = await authFetch('/room_assignments');
+        if (!assigns || assigns.length===0) { assignmentsList.innerHTML = '<div class="small-muted">No assignments</div>'; return; }
+        assignmentsList.innerHTML = assigns.slice(0,40).map(a => `<div class="mb-2"><strong>${escapeHtml(a.room_number || a.room?.room_number || 'Room')}</strong> — ${escapeHtml(a.patient_name || a.patient?.name || ('#'+(a.patient_id||'')))} <div class="small-muted">${new Date(a.admitted_at||a.created_at).toLocaleString()} → ${a.vacated_at ? new Date(a.vacated_at).toLocaleString() : 'ongoing'}</div></div>`).join('');
+      } catch (err) {
+        assignmentsList.innerHTML = '<div class="small-muted">Failed to load assignments</div>';
+        console.error(err);
+      }
+    }
+
+    async function loadPatientsSelect(){
+      assignPatientSelect.innerHTML = '<option>Loading patients...</option>';
+      try {
+        const pts = await authFetch('/patients');
+        if (!pts || pts.length===0){ assignPatientSelect.innerHTML = '<option>No patients</option>'; return; }
+        assignPatientSelect.innerHTML = pts.map(p => `<option value="${p.id}">${escapeHtml(p.name || p.email)} (${p.id})</option>`).join('');
+      } catch(e){ assignPatientSelect.innerHTML = '<option>Error loading</option>'; console.error(e); }
+    }
+
+    // Create room
+    document.getElementById('createRoomForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById('createRoomBtn');
+      btn.disabled = true; btn.textContent = 'Creating...';
+      try {
+        const payload = { room_number: document.getElementById('roomNumber').value.trim(), ward: document.getElementById('roomWard').value.trim(), bed_label: document.getElementById('bedLabel').value.trim(), room_type: document.getElementById('roomType').value };
+        await authFetch('/rooms', { method: 'POST', body: JSON.stringify(payload) });
+        await loadRooms(); document.getElementById('createRoomForm').reset();
+      } catch(e){ alert('Create failed: ' + (e.message || e)); console.error(e); }
+      btn.disabled = false; btn.textContent = 'Create Room';
+    });
+
+    // Assign room
+    document.getElementById('assignForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById('assignBtn'); btn.disabled = true; btn.textContent = 'Assigning...';
+      try {
+        const payload = { room_id: assignRoomSelect.value, patient_id: assignPatientSelect.value, reason: document.getElementById('assignReason').value || null };
+        await authFetch('/room_assignments', { method: 'POST', body: JSON.stringify(payload) });
+        await loadRooms(); await loadAssignments(); document.getElementById('assignForm').reset();
+      } catch(e){ alert('Assign failed: ' + (e.message || e)); console.error(e); }
+      btn.disabled = false; btn.textContent = 'Assign';
+    });
+
+    // delegated actions
+    document.body.addEventListener('click', async (ev) => {
+      const vac = ev.target.closest('.vacateBtn');
+      if (vac) {
+        if (!confirm('Vacate this room?')) return;
+        try {
+          const id = vac.dataset.id;
+          await authFetch(`/rooms/${id}/vacate`, { method: 'POST' });
+          await loadRooms(); await loadAssignments();
+        } catch(e){ alert('Vacate failed: ' + (e.message || e)); console.error(e); }
+      }
+      const quick = ev.target.closest('.assignQuickBtn');
+      if (quick) {
+        assignRoomSelect.value = quick.dataset.id;
+        assignPatientSelect.focus();
+      }
+    });
+
+    function escapeHtml(s){ if (s===null || s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    document.getElementById('refreshBtn').addEventListener('click', () => { loadRooms(); loadAssignments(); loadPatientsSelect(); });
+
+    // init
+    loadRooms();
+    loadAssignments();
+    loadPatientsSelect();
+  </script>
+</body>
+</html>

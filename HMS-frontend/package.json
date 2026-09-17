@@ -1,0 +1,11 @@
+{
+  "name": "hospital-management-system",
+  "version": "1.0.0",
+  "description": "Bootstrap 5 frontend for Hospital Management System",
+  "scripts": {
+    "start": "serve ."
+  },
+  "dependencies": {
+    "serve": "^14.2.0"
+  }
+}

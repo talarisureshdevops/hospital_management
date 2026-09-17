@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Patient History — HMS</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+  <style>.section-card{border-radius:12px;padding:18px;background:#fff;box-shadow:0 6px 18px rgba(2,6,23,0.04);} .user-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;font-weight:700;} .small-muted{color:#6b7280;}</style>
+
+  <script>
+    window.HMS = window.HMS || {};
+    window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+    window.HMS.authFetch = window.HMS.authFetch || (async function(path, opts = {}){
+      const base = window.HMS.API_BASE.replace(/\/$/,'');
+      const url = path.match(/^https?:\/\//) ? path : (base + '/' + path.replace(/^\/+/,''));
+      const token = localStorage.getItem('hms_token');
+      const headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, Object.assign({}, opts, { headers }));
+      const txt = await res.text().catch(()=>null);
+      let body = null;
+      try { body = txt ? JSON.parse(txt) : null; } catch(e) { body = txt; }
+      if (!res.ok) { const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText); err.status = res.status; err.body = body; throw err; }
+      return body;
+    });
+  </script>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+          <li class="nav-item"><a class="nav-link" href="register.html">Sign up</a></li>
+          <li class="nav-item"><a class="nav-link" href="patients.html">Patients</a></li>
+          <li class="nav-item"><a class="nav-link" href="doctors.html">Doctors</a></li>
+          <li class="nav-item"><a class="nav-link" href="admin.html">Admin</a></li>
+        </ul>
+        <div id="navUserPill" class="d-flex align-items-center ms-auto"></div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">Patient History</h4>
+        <div class="small-muted">View or add longitudinal records for patients</div>
+      </div>
+      <div><button id="refreshHist" class="btn btn-outline-secondary btn-sm">Refresh</button></div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="section-card">
+          <h6>Select patient</h6>
+          <select id="patientSelect" class="form-select form-select-sm mt-2"></select>
+          <div class="mt-3 small-muted">Choose a patient to view their history entries.</div>
+        </div>
+
+        <div class="section-card mt-3">
+          <h6>Add history entry</h6>
+          <form id="addHistoryForm">
+            <div class="mb-2"><label class="form-label small">Type</label><select id="histType" class="form-select form-select-sm"><option value="note">Note</option><option value="diagnosis">Diagnosis</option><option value="lab">Lab</option><option value="imaging">Imaging</option></select></div>
+            <div class="mb-2"><label class="form-label small">Title</label><input id="histTitle" class="form-control form-control-sm"/></div>
+            <div class="mb-2"><label class="form-label small">Body</label><textarea id="histBody" rows="4" class="form-control form-control-sm"></textarea></div>
+            <div class="d-grid"><button id="addHistBtn" class="btn btn-primary btn-sm">Add Entry</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="section-card">
+          <h6>History entries</h6>
+          <div id="historyList" class="mt-2 small-muted">Select patient to view history</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer"><div class="container">© <span id="yearHist"></span> HMS</div></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    document.getElementById('yearHist').textContent = new Date().getFullYear();
+    const authFetch = window.HMS.authFetch;
+
+    (function populateNavUser(){
+      const el = document.getElementById('navUserPill');
+      const raw = localStorage.getItem('hms_user');
+      if (!raw) { el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; return; }
+      try {
+        const u = JSON.parse(raw);
+        el.innerHTML = `<div class="dropdown">
+          <a class="dropdown-toggle d-flex align-items-center text-decoration-none" id="userDrop" data-bs-toggle="dropdown" href="#">
+            <div class="user-avatar me-2">${(u.name||u.email||'U').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>
+            <span style="font-weight:600">${u.name||u.email}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
+            <li><a class="dropdown-item" href="#" id="viewProfileLink">Edit profile</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#" id="signOutLink">Sign out</a></li>
+          </ul>
+        </div>`;
+        document.getElementById('signOutLink').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('hms_token'); localStorage.removeItem('hms_user'); window.location.href='index.html'; });
+        document.getElementById('viewProfileLink').addEventListener('click', (e)=>{ e.preventDefault(); const u2 = JSON.parse(raw); const role = (u2.role||'').toLowerCase(); if(role.includes('doctor')) window.location.href='doctors.html#edit'; else if(role.includes('patient')) window.location.href='patients.html#edit'; else window.location.href='admin.html#edit'; });
+      } catch(e){ el.innerHTML = '<a class="btn btn-sm btn-outline-primary" href="login.html">Login</a>'; }
+    })();
+
+    const patientSelect = document.getElementById('patientSelect');
+    const historyList = document.getElementById('historyList');
+
+    async function loadPatients() {
+      patientSelect.innerHTML = '<option>Loading...</option>';
+      try {
+        const pts = await authFetch('/patients');
+        if(!pts || pts.length===0){ patientSelect.innerHTML = '<option>No patients</option>'; return; }
+        patientSelect.innerHTML = pts.map(p=>`<option value="${p.id}">${escapeHtml(p.name||p.email)} (${p.id})</option>`).join('');
+        loadHistoryFor(patientSelect.value);
+      } catch(e){ patientSelect.innerHTML = '<option>Error</option>'; console.error(e); }
+    }
+
+    async function loadHistoryFor(pid) {
+      if(!pid) { historyList.innerHTML='Select patient'; return; }
+      historyList.innerHTML = 'Loading...';
+      try {
+        const res = await authFetch(`/patient_history?patient_id=${pid}`);
+        const entries = Array.isArray(res) ? res : (res.data || []);
+        if(!entries || entries.length===0) { historyList.innerHTML = '<div class="small-muted">No history</div>'; return; }
+        historyList.innerHTML = entries.map(e => `<div class="mb-3"><strong>${escapeHtml(e.title||e.record_type||'')}</strong> <div class="small-muted">${new Date(e.created_at||e.createdAt).toLocaleString()}</div><div>${escapeHtml(e.body||'')}</div></div>`).join('');
+      } catch(e){ historyList.innerHTML = '<div class="small-muted">Failed to load</div>'; console.error(e); }
+    }
+
+    document.getElementById('patientSelect').addEventListener('change', (e)=> loadHistoryFor(e.target.value));
+
+    document.getElementById('addHistoryForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById('addHistBtn');
+      btn.disabled = true; btn.textContent = 'Adding...';
+      try {
+        const payload = { patient_id: patientSelect.value, record_type: document.getElementById('histType').value, title: document.getElementById('histTitle').value.trim(), body: document.getElementById('histBody').value.trim() };
+        await authFetch('/patient_history', { method: 'POST', body: JSON.stringify(payload) });
+        loadHistoryFor(patientSelect.value); document.getElementById('addHistoryForm').reset();
+      } catch(e){ alert('Add failed: ' + (e.message||e)); console.error(e); }
+      btn.disabled=false; btn.textContent='Add Entry';
+    });
+
+    document.getElementById('refreshHist').addEventListener('click', () => loadHistoryFor(patientSelect.value));
+
+    function escapeHtml(s){ if (s===null || s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // init
+    loadPatients();
+  </script>
+</body>
+</html>

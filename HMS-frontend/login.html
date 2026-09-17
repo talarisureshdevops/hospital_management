@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Login — HMS</title>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/style.css" />
+
+  <style>
+    .auth-card { max-width:980px; margin:34px auto; border-radius:12px; overflow:hidden; display:flex; gap:0; }
+    .auth-left { flex:1; padding:40px 32px; background:linear-gradient(180deg,#fff,#fbfdff); }
+    .auth-right { flex:1; padding:28px; background:#f8fafc; display:flex; align-items:center; justify-content:center; }
+    .role-toggle .btn { min-width:110px; }
+  </style>
+  <!-- add near top of each page (once) -->
+<script>
+  // config.js (global)
+  // Production backend URL (use your render backend URL). For local dev replace accordingly.
+  window.HMS = window.HMS || {};
+  // Use absolute backend URL in production:
+  window.HMS.API_BASE = window.HMS.API_BASE || 'https://hms-backend-yqjj.onrender.com/api';
+
+  // authFetch will be used by all pages to attach token & handle JSON
+  window.HMS.authFetch = async function(path, opts = {}) {
+    const base = window.HMS.API_BASE.replace(/\/$/,'');
+    const url = path.startsWith('http') ? path : `${base}/${path.replace(/^\/+/,'')}`;
+    const token = localStorage.getItem('hms_token');
+    const defaultHeaders = {'Content-Type':'application/json'};
+    opts.headers = Object.assign(defaultHeaders, opts.headers || {});
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(url, opts);
+    const text = await res.text().catch(()=>null);
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch(e) { body = text; }
+    if (!res.ok) {
+      const err = new Error(body && (body.error || body.message) ? (body.error || body.message) : res.statusText);
+      err.status = res.status; err.body = body;
+      throw err;
+    }
+    return body;
+  };
+</script>
+
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">HMS</a>
+      <div class="d-flex gap-2 ms-auto">
+        <a class="btn btn-outline-primary btn-sm" href="index.html">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="auth-card card shadow-sm">
+      <div class="auth-left">
+        <h3 class="mb-1">Sign in</h3>
+        <p class="text-muted mb-3">Choose your role and sign in to access your dashboard.</p>
+
+        <div class="mb-3 role-toggle">
+          <div class="btn-group" role="group" aria-label="role toggle" id="roleToggle">
+            <button type="button" class="btn btn-outline-primary active" data-role="patient">Patient</button>
+            <button type="button" class="btn btn-outline-primary" data-role="doctor">Doctor</button>
+          </div>
+        </div>
+
+        <form id="loginForm" novalidate>
+          <div class="mb-3">
+            <label class="form-label small">Email</label>
+            <input id="email" type="email" class="form-control" required />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small">Password</label>
+            <input id="password" type="password" class="form-control" required />
+          </div>
+
+          <div class="mb-3 text-end">
+            <a href="register.html" class="small">Create an account</a>
+          </div>
+
+          <div class="d-grid">
+            <button id="loginBtn" class="btn btn-primary" type="submit">Sign in</button>
+          </div>
+
+          <div id="loginMsg" class="mt-3" aria-live="polite"></div>
+        </form>
+      </div>
+
+      <div class="auth-right">
+        <div style="max-width:360px;text-align:center">
+          <img alt="Sign in" src="assets/images/signup.png" style="width:100%;height:auto;margin-bottom:12px"/>
+          <h5>Access your dashboard</h5>
+          <p class="text-muted small">Doctors can manage schedules and appointments. Patients can view appointments and records.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer"><div class="container">© <span id="yearLogin"></span> HMS</div></footer>
+
+  <!-- Bootstrap -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // ====== CONFIG ======
+    // Change this if your backend API base is different
+    const API_BASE = "https://hms-backend-yqjj.onrender.com/api";
+
+    // ====== UI refs ======
+    const roleToggle = document.getElementById('roleToggle');
+    const loginForm = document.getElementById('loginForm');
+    const loginMsg = document.getElementById('loginMsg');
+    const yearEl = document.getElementById('yearLogin');
+    yearEl.textContent = new Date().getFullYear();
+
+    let selectedRole = 'patient'; // default
+
+    // role toggle handling
+    roleToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-role]');
+      if (!btn) return;
+      // toggle active class
+      roleToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedRole = btn.dataset.role;
+    });
+
+    function showMessage(txt, kind='info') {
+      loginMsg.innerHTML = '';
+      const el = document.createElement('div');
+      el.className = kind === 'error' ? 'alert alert-danger' : 'alert alert-success';
+      el.textContent = txt;
+      loginMsg.appendChild(el);
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      const text = await res.text();
+      try { return { ok: res.ok, status: res.status, body: JSON.parse(text) }; }
+      catch(e) { return { ok: res.ok, status: res.status, body: text }; }
+    }
+
+    loginForm.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  loginMsg.innerHTML = '';
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  if (!email || !password) { showMessage('Email and password are required', 'error'); return; }
+
+  // show loading state
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+
+  try {
+    // POST to backend login
+    const resp = await postJson(API_BASE + '/auth/login', { email, password });
+    if (!resp.ok) {
+      // try to present helpful message
+      let errMsg = 'Login failed';
+      if (resp.body && resp.body.error) errMsg = resp.body.error;
+      else if (resp.status === 401) errMsg = 'Invalid credentials';
+      showMessage(errMsg, 'error');
+      btn.disabled = false; btn.textContent = 'Sign in';
+      return;
+    }
+
+    // success — backend should return token and user
+    const data = resp.body;
+    // common shapes: { token, user } or { success:true, token, user }
+    const token = data.token || data.accessToken || (data.data && data.data.token);
+    const user = data.user || data.data?.user || data;
+
+    if (!token || !user) {
+      showMessage('Unexpected response from server', 'error');
+      btn.disabled = false; btn.textContent = 'Sign in';
+      console.warn('Unexpected login response', data);
+      return;
+    }
+
+    // Store token & user
+    localStorage.setItem('hms_token', token);
+    localStorage.setItem('hms_user', JSON.stringify(user));
+
+    showMessage('Signed in successfully');
+
+    // redirect by role (DOCTORS -> doctors.html)
+    const role = (String(user.role || selectedRole || '')).toLowerCase();
+    setTimeout(() => {
+      if (role.includes('doctor')) {
+        window.location.href = 'doctors.html';
+      } else if (role.includes('patient')) {
+        window.location.href = 'patients.html';
+      } else if (role.includes('admin')) {
+        window.location.href = 'admin.html';
+      } else {
+        // fallback
+        window.location.href = 'dashboard.html';
+      }
+    }, 600);
+
+  } catch (err) {
+    console.error('Login error', err);
+    showMessage('Network error during login', 'error');
+    // ensure button is re-enabled on failure
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+
+
+    // If user already logged in, send them to their dashboard immediately
+    (function checkAlreadyLoggedIn(){
+      const token = localStorage.getItem('hms_token');
+      const userRaw = localStorage.getItem('hms_user');
+      if (token && userRaw) {
+        try {
+          const user = JSON.parse(userRaw);
+          const role = (user.role || '').toLowerCase();
+          if (role.includes('doctor')) window.location.href = 'dashboard.html';
+          else if (role.includes('patient')) window.location.href = 'patients.html';
+          else if (role.includes('admin')) window.location.href = 'admin.html';
+        } catch(e){}
+      }
+    })();
+  </script>
+</body>
+</html>
